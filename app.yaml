@@ -1,6 +1,3 @@
 service: tw-news-spiderman 
 
 runtime: nodejs14
-
-skip_files: 
-- ^(dev/.*)
