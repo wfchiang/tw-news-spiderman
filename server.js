@@ -4,7 +4,7 @@ const uuid = require('uuid');
 const URL = require('url'); 
 
 // Imports the Google Cloud client library
-const {Datastore} = require('@google-cloud/datastore');
+const {Firestore} = require('@google-cloud/firestore');
 
 // Creates an expression app 
 const express = require('express'); 
@@ -17,43 +17,44 @@ function defaultErrorHandler (err, req, res, next) {
 
 app.use(defaultErrorHandler); 
 
-// Creates a datastore client
-const datastoreClient = new Datastore(); 
-const datastoreKind = 'web_news'; 
+// Creates a firestore client
+const firestoreClient = new Firestore(); 
+const firestoreKind = 'web_news'; 
+const firestoreCollectionRef = firestoreClient.collection(firestoreKind); 
 
-// Defines a helper function for inserting data into Datastore 
-async function insert2Datastore (host, url, title, content) {
+// Define a function for delaying execution 
+function delayExe (timeInMs) {
+    return new Promise(resolve => setTimeout(resolve, timeInMs)); 
+}
+
+// Defines a helper function for inserting data into Firestore 
+async function insert2Firestore (host, url, title, content) {
     let id = uuid.v4(); 
 
-    // The Cloud Datastore key for the new entity
-    const taskKey = datastoreClient.key([datastoreKind, id]);
+    let expirationDate = new Date(); 
+    expirationDate.setDate(expirationDate.getDate() + 30); 
 
-    // Prepares the new entity
-    const task = {
-        key: taskKey,
-        data: [
-            { name: 'host', value: host }, 
-            { name: 'url', value: url }, 
-            { name: 'timestamp', value: new Date() }, 
-            { name: 'title', value: title, excludeFromIndexes: true }, 
-            { name: 'content', value: content, excludeFromIndexes: true }
-        ],
-    };
-
-    // Saves the entity
-    await datastoreClient.save(task);
-    // console.log(`[DEBUG] Saved ${task.key.name}: ${JSON.stringify(task.data)}`);
+    await firestoreCollectionRef.doc(id).set(
+        {
+            'host': host, 
+            'url': url, 
+            'timestamp': new Date(), 
+            'expiration': expirationDate, 
+            'title': title, 
+            'content': content
+        }
+    ); 
 }
 
 // Creates a crawler "spiderman"
 const Crawler = require('crawler');
-const { resolveSoa } = require('dns');
-let maxVisitedUrls = 100; 
-let sleepTimeMs = 1000; 
-let visitedUrls = []; 
+let crawlingQuota = 3;
+let usedCrawlingQuota = 0;  
+let sleepTimeMs = 2000; 
+let visitedUrls = new Set([]); 
 
 const crawlerInstance = new Crawler({
-    maxConnections: 10,
+    maxConnections: 1,
     callback: (error, res, done) => {
         if (error) {
             console.log(error);
@@ -69,60 +70,67 @@ const crawlerInstance = new Crawler({
                 let content = ''; 
                 let hrefs = []; 
 
-                // go analyzing the web page 
-                if (!visitedUrls.includes(thisUrl) && visitedUrls.length < maxVisitedUrls) {
-                    visitedUrls.push(thisUrl); 
-                    console.debug('Analyzing URL: ' + thisUrl); 
-
-                    // sleep before analyzing 
-                    // delay(sleepTimeMs); 
-
-                    // extract all hrefs of the same host 
-                    $('a').each((i, aitem) => {
-                        let subHref = $(aitem).attr('href'); 
-                        subHref = new URL.URL(subHref, urlOrigin).href; 
-
-                        if (urlHost == new URL.URL(subHref).host) { 
-                            if (!visitedUrls.includes(subHref)) {
-                                crawlerInstance.queue(subHref);
-                            }
-                        }
-                    }); 
-
-                    // extract the webpage content 
-                    if (urlHost.includes('setn.com')) {
-                        title = $('h1').text() + ' ' + $('h2').text(); 
-                        content = $('.page-text article').text(); 
+                // sleep before analyzing 
+                delayExe(sleepTimeMs * (Math.random() + 1.0)).then(() => {
+                    // go analyzing the web page 
+                    if (visitedUrls.has(thisUrl)) {
+                        console.debug('Skipping the visited url: ' + thisUrl); 
                     }
-                    else if (urlHost.includes('tvbs.com.tw')) {
-                        $('.title_box').find('h1').each((i, elem) => {
-                            title = (title + ' ' + $(elem).text()).trim(); 
-                        }); 
-                        $('.title_box').find('h2').each((i, elem) => {
-                            title = (title + ' ' + $(elem).text()).trim(); 
-                        }); 
+                    else if (usedCrawlingQuota >= crawlingQuota) {
+                        console.debug('Running out of crawling quota...'); 
+                    }
+                    else {
+                        console.debug('Analyzing URL: ' + thisUrl); 
+                        visitedUrls.add(thisUrl); 
+                        usedCrawlingQuota = usedCrawlingQuota + 1; 
 
-                        $('.article_content').find('body').each((i, elem) => {
-                            $(elem).contents().each((ii, subElem) => {
-                                if (subElem.type == 'text') {
-                                    content = (content + ' ' + $(subElem).text()).trim(); 
+                        // extract all hrefs of the same host 
+                        $('a').each((i, aitem) => {
+                            let subHref = $(aitem).attr('href'); 
+                            subHref = new URL.URL(subHref, urlOrigin).href; 
+
+                            if (urlHost == new URL.URL(subHref).host) { 
+                                if (!visitedUrls.has(subHref) && usedCrawlingQuota < crawlingQuota) {
+                                    crawlerInstance.queue(subHref);
                                 }
-                            });
+                            }
                         }); 
+
+                        // extract the webpage content 
+                        if (urlHost.includes('setn.com')) {
+                            title = $('h1').text() + ' ' + $('h2').text(); 
+                            content = $('.page-text article').text(); 
+                        }
+                        else if (urlHost.includes('tvbs.com.tw')) {
+                            $('.title_box').find('h1').each((i, elem) => {
+                                title = (title + ' ' + $(elem).text()).trim(); 
+                            }); 
+                            $('.title_box').find('h2').each((i, elem) => {
+                                title = (title + ' ' + $(elem).text()).trim(); 
+                            }); 
+
+                            $('.article_content').find('body').each((i, elem) => {
+                                $(elem).contents().each((ii, subElem) => {
+                                    if (subElem.type == 'text') {
+                                        content = (content + ' ' + $(subElem).text()).trim(); 
+                                    }
+                                });
+                            }); 
+                        }
+                        else { 
+                            title = ''; 
+                            content = $('body').text(); 
+                        }
+                        
+                        // save the new record 
+                        insert2Firestore(
+                            urlHost, 
+                            thisUrl, 
+                            title, 
+                            content 
+                        ); 
                     }
-                    else { 
-                        title = ''; 
-                        content = $('body').text(); 
-                    }
-                    
-                    // save the new record 
-                    insert2Datastore(
-                        urlHost, 
-                        thisUrl, 
-                        title, 
-                        content 
-                    ); 
-                }
+                });
             }
             else {
                 console.info('Error status (' + String(res.statusCode) + ') returned from URL ' + res.request.uri.href); 
@@ -132,40 +140,72 @@ const crawlerInstance = new Crawler({
     }
 });
 
+// (Pre-)load the visitedUrls
+async function listVisitedUrls () {
+    let firestoreQuery = firestoreCollectionRef.select('url'); 
+    firestoreQuery.get().then(querySnapshot => {
+        visitedUrls = new Set(querySnapshot.docs.map((doc) => doc.data().url)); 
+    }); 
+}
+
+listVisitedUrls(); 
+
 // Defines endpoints 
 app.get('/', (req, res) => {
     res.send({
-        'maxVisitedUrls': maxVisitedUrls, 
-        'visitedUrls.length': visitedUrls.length
+        'crawlingQuota': crawlingQuota,
+        'usedCrawlingQuota': usedCrawlingQuota,  
+        'visitedUrls.size': visitedUrls.size
     }); 
 }); 
 
-app.get('/clearVisitedUrls', (req, res) => {
-    visitedUrls = []; 
-    res.send({'message': 'ok'}); 
+app.get('/listVisitedUrls', (req, res) => {
+    res.send(Array.from(visitedUrls)); 
 }); 
 
-app.get('/setMaxVisitedUrls', (req, res) => {
+app.get('/reListVisitedUrls', (req, res) => {
+    listVisitedUrls().then(() => {
+        res.send(Array.from(visitedUrls)); 
+    }); 
+}); 
+
+app.get('/setCrawlingQuota', (req, res) => {
     let value = req.query.value; 
     try {
         value = parseInt(value); 
         if (value > 0) {
-            maxVisitedUrls = value; 
+            crawlingQuota = value; 
             res.send({'message': 'ok'}); 
         }
         else {
-            res.send({'error': 'maxVisitedUrls must be greater than 0'}); 
+            res.send({'error': 'crawlingQuota must be greater than 0'}); 
         }
     } catch (err) {
         res.send({'error': err.message}); 
     }
 }); 
 
-app.get('/craw', (req, res) => {
-    let urlToCraw = req.query.url; 
-    if (typeof(urlToCraw) == 'string') {
-        console.debug('Received URL: ' + urlToCraw); 
-        crawlerInstance.queue(urlToCraw); 
+app.get('/resetUsedCrawlingQuota', (req, res) => {
+    let value = req.query.value; 
+    try {
+        value = parseInt(value); 
+        if (value > 0) {
+            usedCrawlingQuota = value; 
+            res.send({'message': 'ok'}); 
+        }
+        else {
+            res.send({'error': 'usedCrawlingQuota must be greater than 0'}); 
+        }
+    } catch (err) {
+        res.send({'error': err.message}); 
+    }
+}); 
+
+app.get('/crawl', (req, res) => {
+    let urlToCrawl = req.query.url; 
+    if (typeof(urlToCrawl) == 'string') {
+        console.debug('Received URL: ' + urlToCrawl); 
+        crawlerInstance.queue(urlToCrawl); 
         res.send({'message': 'ok'}); 
     }
     else {
