@@ -53,6 +53,15 @@ let usedCrawlingQuota = 0;
 let sleepTimeMs = 2000; 
 let visitedUrls = new Set([]); 
 
+let skippedBeforeAnalysis = {
+    'noQuota': 0, 
+    'visited': 0
+}; 
+let skippedAfterAnalysis = {
+    'noQuota': 0, 
+    'visited': 0 
+}; 
+
 const crawlerInstance = new Crawler({
     maxConnections: 1,
     callback: (error, res, done) => {
@@ -71,18 +80,14 @@ const crawlerInstance = new Crawler({
                 let hrefs = []; 
 
                 // sleep before analyzing 
-                delayExe(sleepTimeMs * (Math.random() + 1.0)).then(() => {
+                delayExe(sleepTimeMs * Math.random()).then(() => {
                     // go analyzing the web page 
-                    if (visitedUrls.has(thisUrl)) {
-                        console.debug('Skipping the visited url: ' + thisUrl); 
-                    }
-                    else if (usedCrawlingQuota >= crawlingQuota) {
-                        console.debug('Running out of crawling quota...'); 
+                    if (usedCrawlingQuota >= crawlingQuota) {
+                        // console.debug('Running out of crawling quota...'); 
+                        skippedAfterAnalysis['noQuota'] = skippedAfterAnalysis['noQuota'] + 1; 
                     }
                     else {
                         console.debug('Analyzing URL: ' + thisUrl); 
-                        visitedUrls.add(thisUrl); 
-                        usedCrawlingQuota = usedCrawlingQuota + 1; 
 
                         // extract all hrefs of the same host 
                         $('a').each((i, aitem) => {
@@ -90,45 +95,64 @@ const crawlerInstance = new Crawler({
                             subHref = new URL.URL(subHref, urlOrigin).href; 
 
                             if (urlHost == new URL.URL(subHref).host) { 
-                                if (!visitedUrls.has(subHref) && usedCrawlingQuota < crawlingQuota) {
-                                    crawlerInstance.queue(subHref);
-                                }
+                                delayExe(sleepTimeMs * Math.random()).then(() => {
+                                    if (visitedUrls.has(subHref)) {
+                                        skippedBeforeAnalysis['visited'] = skippedBeforeAnalysis['visited'] + 1;
+                                    }
+                                    else if (usedCrawlingQuota >= crawlingQuota) {
+                                        skippedBeforeAnalysis['noQuota'] = skippedBeforeAnalysis['noQuota'] + 1;
+                                    } 
+                                    else {
+                                        crawlerInstance.queue(subHref);
+                                    }
+                                }); 
                             }
                         }); 
 
                         // extract the webpage content 
-                        if (urlHost.includes('setn.com')) {
-                            title = $('h1').text() + ' ' + $('h2').text(); 
-                            content = $('.page-text article').text(); 
+                        if (visitedUrls.has(thisUrl)) {
+                            // console.debug('Skipping the visited url: ' + thisUrl); 
+                            skippedAfterAnalysis['visited'] = skippedAfterAnalysis['visited'] + 1; 
                         }
-                        else if (urlHost.includes('tvbs.com.tw')) {
-                            $('.title_box').find('h1').each((i, elem) => {
-                                title = (title + ' ' + $(elem).text()).trim(); 
-                            }); 
-                            $('.title_box').find('h2').each((i, elem) => {
-                                title = (title + ' ' + $(elem).text()).trim(); 
-                            }); 
+                        else {
+                            // Use 1 quota here 
+                            visitedUrls.add(thisUrl); 
+                            usedCrawlingQuota = usedCrawlingQuota + 1; 
 
-                            $('.article_content').find('body').each((i, elem) => {
-                                $(elem).contents().each((ii, subElem) => {
-                                    if (subElem.type == 'text') {
-                                        content = (content + ' ' + $(subElem).text()).trim(); 
-                                    }
-                                });
-                            }); 
+                            // Analyze the news page 
+                            if (urlHost.includes('setn.com')) {
+                                title = $('h1').text() + ' ' + $('h2').text(); 
+                                content = $('.page-text article').text(); 
+                            }
+                            else if (urlHost.includes('tvbs.com.tw')) {
+                                $('.title_box').find('h1').each((i, elem) => {
+                                    title = (title + ' ' + $(elem).text()).trim(); 
+                                }); 
+                                $('.title_box').find('h2').each((i, elem) => {
+                                    title = (title + ' ' + $(elem).text()).trim(); 
+                                }); 
+
+                                $('.article_content').find('body').each((i, elem) => {
+                                    $(elem).contents().each((ii, subElem) => {
+                                        if (subElem.type == 'text') {
+                                            content = (content + ' ' + $(subElem).text()).trim(); 
+                                        }
+                                    });
+                                }); 
+                            }
+                            else { 
+                                title = ''; 
+                                content = $('body').text(); 
+                            }
+                            
+                            // save the new record 
+                            insert2Firestore(
+                                urlHost, 
+                                thisUrl, 
+                                title, 
+                                content 
+                            ); 
                         }
-                        else { 
-                            title = ''; 
-                            content = $('body').text(); 
-                        }
-                        
-                        // save the new record 
-                        insert2Firestore(
-                            urlHost, 
-                            thisUrl, 
-                            title, 
-                            content 
-                        ); 
                     }
                 });
             }
@@ -150,20 +174,23 @@ async function listVisitedUrls () {
 
 listVisitedUrls(); 
 
+// Setup static contents 
+app.use('/', express.static('public'))
+
 // Defines endpoints 
-app.get('/', (req, res) => {
+app.get('/ping', (req, res) => {
     res.send({
         'crawlingQuota': crawlingQuota,
         'usedCrawlingQuota': usedCrawlingQuota,  
-        'visitedUrls.size': visitedUrls.size
+        'visitedUrls': { 
+            'size': visitedUrls.size
+        }, 
+        'skippedBeforeAnalysis': skippedBeforeAnalysis, 
+        'skippedAfterAnalysis': skippedAfterAnalysis
     }); 
 }); 
 
 app.get('/listVisitedUrls', (req, res) => {
-    res.send(Array.from(visitedUrls)); 
-}); 
-
-app.get('/reListVisitedUrls', (req, res) => {
     listVisitedUrls().then(() => {
         res.send(Array.from(visitedUrls)); 
     }); 
@@ -186,19 +213,7 @@ app.get('/setCrawlingQuota', (req, res) => {
 }); 
 
 app.get('/resetUsedCrawlingQuota', (req, res) => {
-    let value = req.query.value; 
-    try {
-        value = parseInt(value); 
-        if (value > 0) {
-            usedCrawlingQuota = value; 
-            res.send({'message': 'ok'}); 
-        }
-        else {
-            res.send({'error': 'usedCrawlingQuota must be greater than 0'}); 
-        }
-    } catch (err) {
-        res.send({'error': err.message}); 
-    }
+    usedCrawlingQuota = 0;
 }); 
 
 app.get('/crawl', (req, res) => {

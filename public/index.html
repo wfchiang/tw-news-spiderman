@@ -1,0 +1,144 @@
+<html>
+    <head>
+        <title>TW News Spiderman</title>
+
+        <link rel="stylesheet" href="index.css"/>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+
+        <script>
+            // Utils 
+            let updateSummary = function () {
+                fetch('/ping')
+                    .then(res => res.json())
+                    .then(resJson => {
+                        $('#tdCrawlingQuota').text(resJson.crawlingQuota); 
+                        $('#tdUsedCrawlingQuota').text(resJson.usedCrawlingQuota); 
+                        $('#tdNumVisitedUrls').text(resJson.visitedUrls.size);
+                        $('#tdSkippedBeforeAnalysisNoQuota').text(resJson.skippedBeforeAnalysis.noQuota); 
+                        $('#tdSkippedBeforeAnalysisVisited').text(resJson.skippedBeforeAnalysis.visited); 
+                        $('#tdSkippedAfterAnalysisNoQuota').text(resJson.skippedAfterAnalysis.noQuota); 
+                        $('#tdSkippedAfterAnalysisVisited').text(resJson.skippedAfterAnalysis.visited); 
+                    }); 
+            };
+
+            let restCrawlingQuota = function () {
+                fetch('/resetUsedCrawlingQuota').then(res => {}); 
+            }; 
+
+            let setCrawlingQuota = function () {
+                let newCrawlingQuota = String($('#inputNewCrawlingQuota').val()); 
+                console.info('Setting crawling quota to ' + newCrawlingQuota);
+                fetch('/setCrawlingQuota?value=' + encodeURI(newCrawlingQuota)).then(res => {}); 
+            }; 
+
+            let countVisitedUrls = function () {
+                fetch('/listVisitedUrls').then(res => res.json()).then(resJson => {}); 
+            }; 
+
+            let goCrawling = function (url) {
+                console.info('Going to crawl URL ' + url); 
+                fetch('/crawl?url=' + encodeURI(url)).then(res => {}); 
+            };
+
+            // Things to do when the page is loaded 
+            $(document).ready(function () {
+                updateSummary(); 
+            }); 
+
+            // Periodically update "tableSummary"
+            setInterval(
+                updateSummary, 
+                2000
+            );
+
+        </script>
+
+    </head>
+    <body>
+        <h1>TW News Spiderman</h1>
+        
+        <hr/>
+        
+        <div id="divMain" class="divMain">
+            <div id="divSummary">
+                <h2>Summary</h2>
+                <table id="tableSummary">
+                    <tr>
+                        <td>Crawling Quota: </td>
+                        <td id="tdCrawlingQuota"></td>
+                    </tr>
+                    <tr>
+                        <td>Used Crawling Quota: </td>
+                        <td id="tdUsedCrawlingQuota"></td>
+                    </tr>
+                    <tr>
+                        <td>Number of Visited URLs: </td>
+                        <td id="tdNumVisitedUrls"></td>
+                    </tr>
+                    <tr> 
+                        <td>Number of Skipped URLs</td>
+                        <td>
+                            <table>
+                                <tr>
+                                    <td>Before analysis (no quota)</td>
+                                    <td id="tdSkippedBeforeAnalysisNoQuota"></td>
+                                </tr>
+                                <tr>
+                                    <td>Before analysis (visited)</td>
+                                    <td id="tdSkippedBeforeAnalysisVisited"></td>
+                                </tr>
+                                <tr>
+                                    <td>After analysis (no quota)</td>
+                                    <td id="tdSkippedAfterAnalysisNoQuota"></td>
+                                </tr>
+                                <tr>
+                                    <td>After analysis (visited)</td><td id=""></td>
+                                    <td id="tdSkippedAfterAnalysisVisited"></td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <div id="divControls">
+                <h2>Controls</h2>
+                <table id="tableControls">
+                    <tr>
+                        <td>
+                            <button id="buttonResetCrawlingQuota" onclick="restCrawlingQuota();">Reset Crawling Quota</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <input id="inputNewCrawlingQuota"></input>
+                            <button id="buttonSetCrawlingQuota" onclick="setCrawlingQuota();">Set Crawling Quota</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <button id="buttonCountVisitedUrls" onclick="countVisitedUrls();">(Re-)Count Visited URLs (this will consume GCP free quota!)</button>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <div id="divCrawlings">
+                <h2>Crawlings</h2>
+                <table id="tableCrawlings">
+                    <tr>
+                        <td>
+                            <button id="buttonCrawlSetn" onclick="goCrawling('https://www.setn.com');">三立新聞</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <button id="buttonCrawlTvbsNews" onclick="goCrawling('https://news.tvbs.com.tw');">TVBS News</button>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+        </div>
+    </body>
+</html>
