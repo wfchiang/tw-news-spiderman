@@ -50,7 +50,6 @@ async function insert2Firestore (host, url, title, content) {
 const Crawler = require('crawler');
 let crawlingQuota = 3;
 let usedCrawlingQuota = 0;  
-let sleepTimeMs = 2000; 
 let visitedUrls = new Set([]); 
 
 let skippedBeforeAnalysis = {
@@ -63,7 +62,7 @@ let skippedAfterAnalysis = {
 }; 
 
 const crawlerInstance = new Crawler({
-    maxConnections: 1,
+    rateLimit: 1000,
     callback: (error, res, done) => {
         if (error) {
             console.log(error);
@@ -79,82 +78,81 @@ const crawlerInstance = new Crawler({
                 let content = ''; 
                 let hrefs = []; 
 
-                // sleep before analyzing 
-                delayExe(sleepTimeMs * Math.random()).then(() => {
-                    // go analyzing the web page 
-                    if (usedCrawlingQuota >= crawlingQuota) {
-                        // console.debug('Running out of crawling quota...'); 
-                        skippedAfterAnalysis['noQuota'] = skippedAfterAnalysis['noQuota'] + 1; 
+                
+                // go analyzing the web page 
+                if (usedCrawlingQuota >= crawlingQuota) {
+                    // console.debug('Running out of crawling quota...'); 
+                    skippedAfterAnalysis['noQuota'] = skippedAfterAnalysis['noQuota'] + 1; 
+                }
+                else {
+                    console.debug('Analyzing URL: ' + thisUrl); 
+
+                    // extract all hrefs of the same host 
+                    $('a').each((i, aitem) => {
+                        let subHref = $(aitem).attr('href'); 
+                        subHref = new URL.URL(subHref, urlOrigin).href; 
+
+                        if (urlHost == new URL.URL(subHref).host) { 
+                            // Randomly deplay 0 ~ 10 sec before adding more links into the queue 
+                            delayExe(10000 * Math.random()).then(() => { 
+                                if (visitedUrls.has(subHref)) {
+                                    skippedBeforeAnalysis['visited'] = skippedBeforeAnalysis['visited'] + 1;
+                                }
+                                else if (usedCrawlingQuota >= crawlingQuota) {
+                                    skippedBeforeAnalysis['noQuota'] = skippedBeforeAnalysis['noQuota'] + 1;
+                                } 
+                                else {
+                                    crawlerInstance.queue(subHref);
+                                }
+                            }); 
+                        }
+                    }); 
+
+                    // extract the webpage content 
+                    if (visitedUrls.has(thisUrl)) {
+                        // console.debug('Skipping the visited url: ' + thisUrl); 
+                        skippedAfterAnalysis['visited'] = skippedAfterAnalysis['visited'] + 1; 
                     }
                     else {
-                        console.debug('Analyzing URL: ' + thisUrl); 
+                        // Use 1 quota here 
+                        visitedUrls.add(thisUrl); 
+                        usedCrawlingQuota = usedCrawlingQuota + 1; 
 
-                        // extract all hrefs of the same host 
-                        $('a').each((i, aitem) => {
-                            let subHref = $(aitem).attr('href'); 
-                            subHref = new URL.URL(subHref, urlOrigin).href; 
-
-                            if (urlHost == new URL.URL(subHref).host) { 
-                                delayExe(sleepTimeMs * Math.random()).then(() => {
-                                    if (visitedUrls.has(subHref)) {
-                                        skippedBeforeAnalysis['visited'] = skippedBeforeAnalysis['visited'] + 1;
-                                    }
-                                    else if (usedCrawlingQuota >= crawlingQuota) {
-                                        skippedBeforeAnalysis['noQuota'] = skippedBeforeAnalysis['noQuota'] + 1;
-                                    } 
-                                    else {
-                                        crawlerInstance.queue(subHref);
-                                    }
-                                }); 
-                            }
-                        }); 
-
-                        // extract the webpage content 
-                        if (visitedUrls.has(thisUrl)) {
-                            // console.debug('Skipping the visited url: ' + thisUrl); 
-                            skippedAfterAnalysis['visited'] = skippedAfterAnalysis['visited'] + 1; 
+                        // Analyze the news page 
+                        if (urlHost.includes('setn.com')) {
+                            title = $('h1').text() + ' ' + $('h2').text(); 
+                            content = $('.page-text article').text(); 
                         }
-                        else {
-                            // Use 1 quota here 
-                            visitedUrls.add(thisUrl); 
-                            usedCrawlingQuota = usedCrawlingQuota + 1; 
+                        else if (urlHost.includes('tvbs.com.tw')) {
+                            $('.title_box').find('h1').each((i, elem) => {
+                                title = (title + ' ' + $(elem).text()).trim(); 
+                            }); 
+                            $('.title_box').find('h2').each((i, elem) => {
+                                title = (title + ' ' + $(elem).text()).trim(); 
+                            }); 
 
-                            // Analyze the news page 
-                            if (urlHost.includes('setn.com')) {
-                                title = $('h1').text() + ' ' + $('h2').text(); 
-                                content = $('.page-text article').text(); 
-                            }
-                            else if (urlHost.includes('tvbs.com.tw')) {
-                                $('.title_box').find('h1').each((i, elem) => {
-                                    title = (title + ' ' + $(elem).text()).trim(); 
-                                }); 
-                                $('.title_box').find('h2').each((i, elem) => {
-                                    title = (title + ' ' + $(elem).text()).trim(); 
-                                }); 
-
-                                $('.article_content').find('body').each((i, elem) => {
-                                    $(elem).contents().each((ii, subElem) => {
-                                        if (subElem.type == 'text') {
-                                            content = (content + ' ' + $(subElem).text()).trim(); 
-                                        }
-                                    });
-                                }); 
-                            }
-                            else { 
-                                title = ''; 
-                                content = $('body').text(); 
-                            }
-                            
-                            // save the new record 
-                            insert2Firestore(
-                                urlHost, 
-                                thisUrl, 
-                                title, 
-                                content 
-                            ); 
+                            $('.article_content').find('body').each((i, elem) => {
+                                $(elem).contents().each((ii, subElem) => {
+                                    if (subElem.type == 'text') {
+                                        content = (content + ' ' + $(subElem).text()).trim(); 
+                                    }
+                                });
+                            }); 
                         }
+                        else { 
+                            title = ''; 
+                            content = $('body').text(); 
+                        }
+                        
+                        // save the new record 
+                        insert2Firestore(
+                            urlHost, 
+                            thisUrl, 
+                            title, 
+                            content 
+                        ); 
                     }
-                });
+                }
             }
             else {
                 console.info('Error status (' + String(res.statusCode) + ') returned from URL ' + res.request.uri.href); 
