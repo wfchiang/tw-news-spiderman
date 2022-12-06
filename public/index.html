@@ -18,6 +18,7 @@
                         $('#tdSkippedBeforeAnalysisVisited').text(resJson.skippedBeforeAnalysis.visited); 
                         $('#tdSkippedAfterAnalysisNoQuota').text(resJson.skippedAfterAnalysis.noQuota); 
                         $('#tdSkippedAfterAnalysisVisited').text(resJson.skippedAfterAnalysis.visited); 
+                        $('#crawlerQueueLength').text(resJson.crawlerQueueLength);
                     }); 
             };
 
@@ -74,6 +75,10 @@
                     <tr>
                         <td>Number of Visited URLs: </td>
                         <td id="tdNumVisitedUrls"></td>
+                    </tr>
+                    <tr>
+                        <td>Crawler Queue Length: </td>
+                        <td id="crawlerQueueLength"></td>
                     </tr>
                     <tr> 
                         <td>Number of Skipped URLs</td>

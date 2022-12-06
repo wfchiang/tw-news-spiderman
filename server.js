@@ -44,7 +44,7 @@ async function insert2Firestore (host, url, title, content) {
             'content': content
         }
     ); 
-}
+} 
 
 // Creates a crawler "spiderman"
 const Crawler = require('crawler');
@@ -131,12 +131,25 @@ const crawlerInstance = new Crawler({
                                 title = (title + ' ' + $(elem).text()).trim(); 
                             }); 
 
-                            $('.article_content').find('body').each((i, elem) => {
-                                $(elem).contents().each((ii, subElem) => {
-                                    if (subElem.type == 'text') {
-                                        content = (content + ' ' + $(subElem).text()).trim(); 
+                            let extract_tvbs_article_content = function(jqElems) {
+                                let all_text = ''; 
+                                jqElems.contents().each((ii, subElem) => {
+                                    let text_fragment = ''; 
+                                    if (subElem.type == 'tag') {
+                                        if (subElem.name == 'div' || subElem.name == 'p') {
+                                            text_fragment = extract_tvbs_article_content($(subElem)); 
+                                        } 
                                     }
-                                });
+                                    if (subElem.type == 'text') { 
+                                        text_fragment = $(subElem).text(); 
+                                    }
+                                    all_text = (all_text + ' ' + text_fragment).trim(); 
+                                }); 
+                                return all_text; 
+                            }; 
+
+                            $('.article_content').find('body').each((i, elem) => { 
+                                content = extract_tvbs_article_content($(elem)); 
                             }); 
                         }
                         else { 
@@ -184,7 +197,8 @@ app.get('/ping', (req, res) => {
             'size': visitedUrls.size
         }, 
         'skippedBeforeAnalysis': skippedBeforeAnalysis, 
-        'skippedAfterAnalysis': skippedAfterAnalysis
+        'skippedAfterAnalysis': skippedAfterAnalysis, 
+        'crawlerQueueLength': crawlerInstance.queueSize
     }); 
 }); 
 
