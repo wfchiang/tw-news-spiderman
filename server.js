@@ -1,7 +1,9 @@
 'use strict'; 
 
+const os = require('os'); 
 const uuid = require('uuid');
 const URL = require('url'); 
+const fs = require('fs');
 
 // Imports the Google Cloud client library
 const {Firestore} = require('@google-cloud/firestore');
@@ -178,9 +180,8 @@ const crawlerInstance = new Crawler({
 // (Pre-)load the visitedUrls
 async function listVisitedUrls () {
     let firestoreQuery = firestoreCollectionRef.select('url'); 
-    firestoreQuery.get().then(querySnapshot => {
-        visitedUrls = new Set(querySnapshot.docs.map((doc) => doc.data().url)); 
-    }); 
+    let querySnapshot = await firestoreQuery.get(); 
+    visitedUrls = new Set(querySnapshot.docs.map((doc) => doc.data().url)); 
 }
 
 listVisitedUrls(); 
@@ -239,6 +240,36 @@ app.get('/crawl', (req, res) => {
         res.send({'error': 'Invalid URL to craw'}); 
     }
 });
+
+// Endpoint for downloading all data from Firestore -->> this is not good, but I don't find a good alternative at this moment 
+app.get('/snapshotFirestoreCollection', (req, res, next) => {
+    firestoreCollectionRef.get()
+    .then((querySnapshot) => {
+        let collectionSnapshot = querySnapshot.docs.map((doc) => doc.data()); 
+        let jsonContent = JSON.stringify(collectionSnapshot); 
+        
+        let tmpFilePath = os.tmpdir() + '/' + uuid.v4() + '.json'; 
+        tmpFilePath = tmpFilePath.replace(/\\/g, '/'); 
+        console.info('Writing into tmp file: (' + typeof(tmpFilePath) + ') ' + tmpFilePath); 
+        fs.writeFileSync(tmpFilePath, jsonContent);
+
+        console.info('Start downloading...'); 
+        res.download(
+            tmpFilePath, 
+            'tw-news-snapshot.json', 
+            function (err) { 
+                if (err) {
+                    console.info('Download was actually failed...'); 
+                    console.info(err);
+                }
+            }
+        ); 
+    })
+    .catch((err) => {
+        console.error('Snapshoting Firestore collection failed...'); 
+        next(err); 
+    }); 
+}); 
 
 // Setup the app 
 const PORT = parseInt(process.env.PORT) || 8080; 

@@ -41,6 +41,26 @@
                 fetch('/crawl?url=' + encodeURI(url)).then(res => {}); 
             };
 
+            let downloadSnapshot = function () {
+                fetch("/snapshotFirestoreCollection")
+                    .then((res) => { 
+                        if (res.ok) {
+                            return res.blob(); 
+                        }
+                        else {
+                            alert('Downloading failed...'); 
+                            throw new Error('Downloading failed...'); 
+                        }
+                    })
+                    .then((data) => { 
+                        console.info(data); 
+                        let tmpA = document.createElement("a");
+                        tmpA.href = window.URL.createObjectURL(data);
+                        tmpA.download = "tw-news-snapshot.json";
+                        tmpA.click(); 
+                    });
+            };
+
             // Things to do when the page is loaded 
             $(document).ready(function () {
                 updateSummary(); 
@@ -61,7 +81,7 @@
         <hr/>
         
         <div id="divMain" class="divMain">
-            <div id="divSummary">
+            <div id="divSummary" class="divModule">
                 <h2>Summary</h2>
                 <table id="tableSummary">
                     <tr>
@@ -106,7 +126,7 @@
                 </table>
             </div>
 
-            <div id="divControls">
+            <div id="divControls" class="divModule">
                 <h2>Controls</h2>
                 <table id="tableControls">
                     <tr>
@@ -125,10 +145,15 @@
                             <button id="buttonCountVisitedUrls" onclick="countVisitedUrls();">(Re-)Count Visited URLs (this will consume GCP free quota!)</button>
                         </td>
                     </tr>
+                    <tr>
+                        <td>
+                            <button id="downloadSnapshot" onclick="downloadSnapshot();">Download Data/News Snapshot</button>
+                        </td>
+                    </tr>
                 </table>
             </div>
 
-            <div id="divCrawlings">
+            <div id="divCrawlings" class="divModule">
                 <h2>Crawlings</h2>
                 <table id="tableCrawlings">
                     <tr>

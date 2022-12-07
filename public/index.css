@@ -1,6 +1,6 @@
 body {
     margin: 10px; 
-    padding: 10px; 
+    padding: 10px;
 }
 
 h1 {
@@ -19,12 +19,23 @@ div {
     margin: 5px; 
     padding: 5px; 
     border: 2px solid gray;
-    border-radius: 5px;
+    border-radius: 5px; 
+    font-size: 16;
 }
 
 .divMain {
     display: flex;
     flex-direction: row;
     align-items: flex-start;
-    justify-content: space-evenly;
+    justify-content: center;
+    border: 0;
+}
+
+.divModule {
+    background-color: lightcyan;
+    font-size: 14;
+}
+
+button {
+    margin: 2px; 
 }
