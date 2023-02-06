@@ -10,6 +10,8 @@ npm install
 
 **Running Locally** 
 
+First setting up the GCP credential (service account key). 
+
 ```BASH 
 npm start 
 ``` 
